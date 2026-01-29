@@ -46,19 +46,15 @@ def get_wifi_details(show_device_details=False):
         details += "Connected Devices:\n"
         arp_lines = arp_output.split('\n')
         for line in arp_lines:
-            if wifi_ip.split('.')[0] in line and wifi_ip.split('.')[1] in line:  # Rough filter for same subnet
+            if line.startswith(f"{wifi_ip.split('.')[0]}.{wifi_ip.split('.')[1]}.{wifi_ip.split('.')[2]}."):  # Filter for same subnet
                 parts = line.split()
                 if len(parts) >= 2 and parts[0] != wifi_ip:
                     ip = parts[0]
                     mac = parts[1]
                     details += f"IP: {ip}, MAC: {mac}"
                     if show_device_details:
-                        # Try to get hostname
-                        try:
-                            hostname = socket.gethostbyaddr(ip)[0]
-                        except:
-                            hostname = "Unknown"
-                        details += f", Hostname: {hostname}"
+                        # Try to get hostname (removed to fix lagging)
+                        details += ", Hostname: Not available (to avoid lagging)"
                     details += "\n"
 
         return details
@@ -67,19 +63,14 @@ def get_wifi_details(show_device_details=False):
         return f"Error: {e}"
 
 def fetch_details():
-    def run():
-        try:
-            show_details = show_details_var.get()
-            details = get_wifi_details(show_details)
-            root.after(0, lambda: update_text_area(details))
-        except Exception as e:
-            root.after(0, lambda: update_text_area(f"Error fetching details: {e}"))
-    
-    def update_text_area(text):
+    try:
+        show_details = show_details_var.get()
+        details = get_wifi_details(show_details)
         text_area.delete(1.0, tk.END)
-        text_area.insert(tk.END, text)
-    
-    threading.Thread(target=run).start()
+        text_area.insert(tk.END, details)
+    except Exception as e:
+        text_area.delete(1.0, tk.END)
+        text_area.insert(tk.END, f"Error fetching details: {e}")
 
 # Create the main window
 root = tk.Tk()
@@ -90,7 +81,7 @@ show_details_var = tk.BooleanVar(value=True)  # Default to checked
 show_details_checkbox = tk.Checkbutton(root, text="Show Device Details", variable=show_details_var)
 show_details_checkbox.pack(pady=5)
 
-# Create a button to fetch details
+# Create a button to Show details
 fetch_button = tk.Button(root, text="Show WiFi Details", command=fetch_details)
 fetch_button.pack(pady=10)
 
