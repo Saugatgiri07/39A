@@ -1,6 +1,7 @@
 import socket
 import subprocess
 import ipaddress
+import threading
 import tkinter as tk
 from tkinter import scrolledtext
 
@@ -66,14 +67,19 @@ def get_wifi_details(show_device_details=False):
         return f"Error: {e}"
 
 def fetch_details():
-    try:
-        show_details = show_details_var.get()
-        details = get_wifi_details(show_details)
+    def run():
+        try:
+            show_details = show_details_var.get()
+            details = get_wifi_details(show_details)
+            root.after(0, lambda: update_text_area(details))
+        except Exception as e:
+            root.after(0, lambda: update_text_area(f"Error fetching details: {e}"))
+    
+    def update_text_area(text):
         text_area.delete(1.0, tk.END)
-        text_area.insert(tk.END, details)
-    except Exception as e:
-        text_area.delete(1.0, tk.END)
-        text_area.insert(tk.END, f"Error fetching details: {e}")
+        text_area.insert(tk.END, text)
+    
+    threading.Thread(target=run).start()
 
 # Create the main window
 root = tk.Tk()
@@ -85,7 +91,7 @@ show_details_checkbox = tk.Checkbutton(root, text="Show Device Details", variabl
 show_details_checkbox.pack(pady=5)
 
 # Create a button to fetch details
-fetch_button = tk.Button(root, text="Fetch WiFi Details", command=fetch_details)
+fetch_button = tk.Button(root, text="Show WiFi Details", command=fetch_details)
 fetch_button.pack(pady=10)
 
 # Create a scrolled text area to display the details
