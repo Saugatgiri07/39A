@@ -57,19 +57,7 @@ def get_wifi_details(show_device_details=False):
                             hostname = socket.gethostbyaddr(ip)[0]
                         except:
                             hostname = "Unknown"
-                        # Try to get NetBIOS name using nbtstat
-                        try:
-                            nbt_result = subprocess.run(['nbtstat', '-A', ip], capture_output=True, text=True, timeout=5)
-                            nbt_output = nbt_result.stdout
-                            # Parse for NetBIOS name
-                            netbios_name = "Unknown"
-                            for line in nbt_output.split('\n'):
-                                if '<00>' in line and 'UNIQUE' in line:
-                                    netbios_name = line.split()[0]
-                                    break
-                        except:
-                            netbios_name = "Unknown"
-                        details += f", Hostname: {hostname}, NetBIOS Name: {netbios_name}"
+                        details += f", Hostname: {hostname}"
                     details += "\n"
 
         return details
