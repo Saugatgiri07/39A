@@ -4,7 +4,7 @@ import ipaddress
 import tkinter as tk
 from tkinter import scrolledtext
 
-def get_wifi_details():
+def get_wifi_details(show_device_details=False):
     try:
         # Run ipconfig to get network details
         result = subprocess.run(['ipconfig'], capture_output=True, text=True, shell=True)
@@ -48,7 +48,29 @@ def get_wifi_details():
             if wifi_ip.split('.')[0] in line and wifi_ip.split('.')[1] in line:  # Rough filter for same subnet
                 parts = line.split()
                 if len(parts) >= 2 and parts[0] != wifi_ip:
-                    details += f"IP: {parts[0]}, MAC: {parts[1]}\n"
+                    ip = parts[0]
+                    mac = parts[1]
+                    details += f"IP: {ip}, MAC: {mac}"
+                    if show_device_details:
+                        # Try to get hostname
+                        try:
+                            hostname = socket.gethostbyaddr(ip)[0]
+                        except:
+                            hostname = "Unknown"
+                        # Try to get NetBIOS name using nbtstat
+                        try:
+                            nbt_result = subprocess.run(['nbtstat', '-A', ip], capture_output=True, text=True, timeout=5)
+                            nbt_output = nbt_result.stdout
+                            # Parse for NetBIOS name
+                            netbios_name = "Unknown"
+                            for line in nbt_output.split('\n'):
+                                if '<00>' in line and 'UNIQUE' in line:
+                                    netbios_name = line.split()[0]
+                                    break
+                        except:
+                            netbios_name = "Unknown"
+                        details += f", Hostname: {hostname}, NetBIOS Name: {netbios_name}"
+                    details += "\n"
 
         return details
 
@@ -56,13 +78,23 @@ def get_wifi_details():
         return f"Error: {e}"
 
 def fetch_details():
-    details = get_wifi_details()
-    text_area.delete(1.0, tk.END)
-    text_area.insert(tk.END, details)
+    try:
+        show_details = show_details_var.get()
+        details = get_wifi_details(show_details)
+        text_area.delete(1.0, tk.END)
+        text_area.insert(tk.END, details)
+    except Exception as e:
+        text_area.delete(1.0, tk.END)
+        text_area.insert(tk.END, f"Error fetching details: {e}")
 
 # Create the main window
 root = tk.Tk()
 root.title("WiFi Details Tool")
+
+# Create a checkbox for showing device details
+show_details_var = tk.BooleanVar(value=True)  # Default to checked
+show_details_checkbox = tk.Checkbutton(root, text="Show Device Details", variable=show_details_var)
+show_details_checkbox.pack(pady=5)
 
 # Create a button to fetch details
 fetch_button = tk.Button(root, text="Fetch WiFi Details", command=fetch_details)
