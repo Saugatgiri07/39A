@@ -32,8 +32,10 @@ def get_wifi_details(show_device_details=False):
         if not wifi_ip or not wifi_subnet:
             return "Could not find WiFi IP or subnet. Ensure you are connected to WiFi."
 
-        # Calculate network
-        network = ipaddress.IPv4Network(f"{wifi_ip}/{wifi_subnet}", strict=False)
+        # Calculate network prefix from subnet mask
+        subnet_mask = ipaddress.IPv4Address(wifi_subnet)
+        prefix = bin(int(subnet_mask)).count('1')
+        network = ipaddress.IPv4Network(f"{wifi_ip}/{prefix}", strict=False)
 
         details = f"WiFi IP Address: {wifi_ip}\n"
         details += f"Subnet Mask: {wifi_subnet}\n"
@@ -53,23 +55,41 @@ def get_wifi_details(show_device_details=False):
 
         details += f"Connected Wi-Fi Name (SSID): {ssid}\n\n"
 
-        # Get connected devices using ARP
-        arp_result = subprocess.run(['arp', '-a'], capture_output=True, text=True)
-        arp_output = arp_result.stdout
+        # Get connected devices by scanning the network
+        details += "Connected Devices (scanning network for active devices):\n"
+        active_devices = []
 
-        details += "Connected Devices:\n"
-        arp_lines = arp_output.split('\n')
-        for line in arp_lines:
-            if line.startswith(f"{wifi_ip.split('.')[0]}.{wifi_ip.split('.')[1]}.{wifi_ip.split('.')[2]}."):  # Filter for same subnet
-                parts = line.split()
-                if len(parts) >= 2 and parts[0] != wifi_ip:
-                    ip = parts[0]
-                    mac = parts[1]
-                    details += f"IP: {ip}, MAC: {mac}"
-                    if show_device_details:
-                        # Try to get hostname (removed to fix lagging)
-                        details += ", Hostname: Not available (to avoid lagging)"
-                    details += "\n"
+        # Perform ping sweep on the subnet
+        for ip in network.hosts():
+            if str(ip) == wifi_ip:
+                continue  # Skip own IP
+            try:
+                ping_result = subprocess.run(['ping', '-n', '1', '-w', '100', str(ip)], capture_output=True, text=True)
+                if ping_result.returncode == 0:
+                    active_devices.append(str(ip))
+            except:
+                pass
+
+        # For each active IP, get MAC from ARP
+        for ip in active_devices:
+            arp_result = subprocess.run(['arp', '-a', ip], capture_output=True, text=True)
+            arp_output = arp_result.stdout
+            mac = "Unknown"
+            for line in arp_output.split('\n'):
+                if ip in line:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        mac = parts[1]
+                        break
+            details += f"IP: {ip}, MAC: {mac}"
+            if show_device_details:
+                # Try to get hostname
+                try:
+                    hostname = socket.gethostbyaddr(ip)[0]
+                    details += f", Hostname: {hostname}"
+                except:
+                    details += ", Hostname: Unknown"
+            details += "\n"
 
         return details
 
@@ -77,14 +97,18 @@ def get_wifi_details(show_device_details=False):
         return f"Error: {e}"
 
 def fetch_details():
-    try:
-        show_details = show_details_var.get()
-        details = get_wifi_details(show_details)
-        text_area.delete(1.0, tk.END)
-        text_area.insert(tk.END, details)
-    except Exception as e:
-        text_area.delete(1.0, tk.END)
-        text_area.insert(tk.END, f"Error fetching details: {e}")
+    def run_in_thread():
+        try:
+            text_area.delete(1.0, tk.END)
+            text_area.insert(tk.END, "Scanning network... Please wait.\n")
+            show_details = show_details_var.get()
+            details = get_wifi_details(show_details)
+            text_area.delete(1.0, tk.END)
+            text_area.insert(tk.END, details)
+        except Exception as e:
+            text_area.delete(1.0, tk.END)
+            text_area.insert(tk.END, f"Error fetching details: {e}")
+    threading.Thread(target=run_in_thread, daemon=True).start()
 
 # Create the main window
 root = tk.Tk()
