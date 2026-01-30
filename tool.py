@@ -39,6 +39,20 @@ def get_wifi_details(show_device_details=False):
         details += f"Subnet Mask: {wifi_subnet}\n"
         details += f"Network: {network}\n\n"
 
+        # Get connected Wi-Fi name (SSID)
+        ssid = "Not available"
+        try:
+            ssid_result = subprocess.run(['netsh', 'wlan', 'show', 'interfaces'], capture_output=True, text=True)
+            ssid_output = ssid_result.stdout
+            for line in ssid_output.split('\n'):
+                if 'SSID' in line and ':' in line:
+                    ssid = line.split(':')[1].strip()
+                    break
+        except Exception as e:
+            ssid = f"Error retrieving SSID: {e}"
+
+        details += f"Connected Wi-Fi Name (SSID): {ssid}\n\n"
+
         # Get connected devices using ARP
         arp_result = subprocess.run(['arp', '-a'], capture_output=True, text=True)
         arp_output = arp_result.stdout
