@@ -4,6 +4,7 @@ import ipaddress
 import threading
 import tkinter as tk
 from tkinter import scrolledtext
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def get_wifi_details(show_device_details=False):
     try:
@@ -55,33 +56,37 @@ def get_wifi_details(show_device_details=False):
 
         details += f"Connected Wi-Fi Name (SSID): {ssid}\n\n"
 
-        # Get connected devices from ARP table and verify with ping
-        details += "Connected Devices (from ARP table, verified active):\n"
-        arp_result = subprocess.run(['arp', '-a'], capture_output=True, text=True)
-        arp_output = arp_result.stdout
+        # Get connected devices by scanning the entire subnet with concurrent pings
+        details += "Connected Devices (active devices on the network):\n"
+        active_ips = []
 
-        arp_devices = []
-        arp_lines = arp_output.split('\n')
-        for line in arp_lines:
-            if line.startswith(f"{wifi_ip.split('.')[0]}.{wifi_ip.split('.')[1]}.{wifi_ip.split('.')[2]}."):  # Filter for same subnet
-                parts = line.split()
-                if len(parts) >= 2 and parts[0] != wifi_ip:
-                    ip = parts[0]
-                    mac = parts[1]
-                    arp_devices.append((ip, mac))
-
-        # Verify each ARP device with a quick ping
-        active_devices = []
-        for ip, mac in arp_devices:
+        def ping_ip(ip):
             try:
-                ping_result = subprocess.run(['ping', '-n', '1', '-w', '50', ip], capture_output=True, text=True)
-                if ping_result.returncode == 0:
-                    active_devices.append((ip, mac))
+                result = subprocess.run(['ping', '-n', '1', '-w', '100', str(ip)], capture_output=True, text=True)
+                if result.returncode == 0:
+                    return str(ip)
             except:
                 pass
+            return None
 
-        # Display active devices
-        for ip, mac in active_devices:
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            futures = [executor.submit(ping_ip, ip) for ip in network.hosts() if str(ip) != wifi_ip]
+            for future in as_completed(futures):
+                ip = future.result()
+                if ip:
+                    active_ips.append(ip)
+
+        # For each active IP, get MAC from ARP
+        for ip in active_ips:
+            arp_result = subprocess.run(['arp', '-a', ip], capture_output=True, text=True)
+            arp_output = arp_result.stdout
+            mac = "Unknown"
+            for line in arp_output.split('\n'):
+                if ip in line:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        mac = parts[1]
+                        break
             details += f"IP: {ip}, MAC: {mac}"
             if show_device_details:
                 # Try to get hostname
