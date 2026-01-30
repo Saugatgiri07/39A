@@ -3,7 +3,7 @@ import subprocess
 import ipaddress
 import threading
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, messagebox
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def get_wifi_details(show_device_details=False):
@@ -116,6 +116,30 @@ def fetch_details():
             text_area.insert(tk.END, f"Error fetching details: {e}")
     threading.Thread(target=run_in_thread, daemon=True).start()
 
+def block_device():
+    ip = ip_entry.get().strip()
+    if not ip:
+        messagebox.showerror("Error", "Please enter an IP address.")
+        return
+    try:
+        # Add firewall rule to block outbound traffic for the IP
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip], check=True)
+        messagebox.showinfo("Success", f"Internet access blocked for {ip}.")
+    except subprocess.CalledProcessError as e:
+        messagebox.showerror("Error", f"Failed to block {ip}: {e}")
+
+def unblock_device():
+    ip = ip_entry.get().strip()
+    if not ip:
+        messagebox.showerror("Error", "Please enter an IP address.")
+        return
+    try:
+        # Delete the firewall rule to unblock
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_' + ip], check=True)
+        messagebox.showinfo("Success", f"Internet access unblocked for {ip}.")
+    except subprocess.CalledProcessError as e:
+        messagebox.showerror("Error", f"Failed to unblock {ip}: {e}")
+
 # Create the main window
 root = tk.Tk()
 root.title("WiFi Details Tool")
@@ -132,6 +156,18 @@ fetch_button.pack(pady=10)
 # Create a scrolled text area to display the details
 text_area = scrolledtext.ScrolledText(root, width=80, height=20)
 text_area.pack(pady=10)
+
+# Create entry for IP address
+ip_label = tk.Label(root, text="Enter IP Address to Block/Unblock:")
+ip_label.pack(pady=5)
+ip_entry = tk.Entry(root, width=20)
+ip_entry.pack(pady=5)
+
+# Create block and unblock buttons
+block_button = tk.Button(root, text="Block Internet Access", command=block_device)
+block_button.pack(pady=5)
+unblock_button = tk.Button(root, text="Unblock Internet Access", command=unblock_device)
+unblock_button.pack(pady=5)
 
 if __name__ == "__main__":
     root.mainloop()
