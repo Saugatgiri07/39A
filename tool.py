@@ -5,6 +5,21 @@ import threading
 import tkinter as tk
 from tkinter import scrolledtext, messagebox
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import ctypes
+import sys
+import os
+
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+def run_as_admin():
+    if not is_admin():
+        # Re-run the program with admin rights
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+        sys.exit()
 
 def get_wifi_details(show_device_details=False):
     try:
@@ -117,6 +132,9 @@ def fetch_details():
     threading.Thread(target=run_in_thread, daemon=True).start()
 
 def block_device():
+    if not is_admin():
+        messagebox.showerror("Error", "Administrator privileges are required to block/unblock internet access. Please run the application as administrator.")
+        return
     ip = ip_entry.get().strip()
     if not ip:
         messagebox.showerror("Error", "Please enter an IP address.")
