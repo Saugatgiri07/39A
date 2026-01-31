@@ -87,15 +87,15 @@ def get_wifi_details(show_device_details=False):
                 pass
             return None
 
-        with ThreadPoolExecutor(max_workers=50) as executor:
+        with ThreadPoolExecutor(max_workers=200) as executor:
             futures = [executor.submit(ping_ip, ip) for ip in network.hosts() if str(ip) != wifi_ip]
             for future in as_completed(futures):
                 ip = future.result()
                 if ip:
                     active_ips.append(ip)
 
-        # For each active IP, get MAC from ARP
-        for ip in active_ips:
+        # For each active IP, get MAC from ARP and device name concurrently
+        def get_device_info(ip):
             arp_result = subprocess.run(['arp', '-a', ip], capture_output=True, text=True)
             arp_output = arp_result.stdout
             mac = "Unknown"
@@ -105,15 +105,53 @@ def get_wifi_details(show_device_details=False):
                     if len(parts) >= 2:
                         mac = parts[1]
                         break
-            details += f"IP: {ip}, MAC: {mac}"
-            if show_device_details:
-                # Try to get hostname
+            device_name = "Unknown"
+            try:
+                # Try to get fully qualified domain name
+                device_name = socket.getfqdn(ip)
+                if device_name == ip:
+                    device_name = "Unknown"
+            except:
+                pass
+            if device_name == "Unknown":
                 try:
-                    hostname = socket.gethostbyaddr(ip)[0]
-                    details += f", Hostname: {hostname}"
+                    # Try to get NetBIOS name using nbtstat
+                    nbt_result = subprocess.run(['nbtstat', '-a', ip], capture_output=True, text=True, timeout=5)
+                    nbt_output = nbt_result.stdout
+                    for line in nbt_output.split('\n'):
+                        if '<00>' in line and 'UNIQUE' in line:
+                            parts = line.split()
+                            if len(parts) > 0:
+                                device_name = parts[0].strip()
+                                break
                 except:
-                    details += ", Hostname: Unknown"
-            details += "\n"
+                    pass
+            if device_name == "Unknown":
+                try:
+                    # Fallback to reverse DNS lookup
+                    device_name = socket.gethostbyaddr(ip)[0]
+                except:
+                    pass
+            if device_name == "Unknown":
+                try:
+                    # Try ping with -a to resolve hostname
+                    ping_result = subprocess.run(['ping', '-a', '-n', '1', '-w', '1000', ip], capture_output=True, text=True)
+                    ping_output = ping_result.stdout
+                    for line in ping_output.split('\n'):
+                        if 'Pinging' in line and '[' in line:
+                            start = line.find('Pinging') + 8
+                            end = line.find('[')
+                            if start < end:
+                                device_name = line[start:end].strip()
+                                break
+                except:
+                    pass
+            return f"IP: {ip}, MAC: {mac}, Device Name: {device_name}\n"
+
+        with ThreadPoolExecutor(max_workers=50) as executor:
+            futures = [executor.submit(get_device_info, ip) for ip in active_ips]
+            for future in as_completed(futures):
+                details += future.result()
 
         return details
 
@@ -125,6 +163,7 @@ def fetch_details():
         try:
             text_area.delete(1.0, tk.END)
             text_area.insert(tk.END, "Scanning network... Please wait.\n")
+            root.update_idletasks()  # Make GUI responsive
             show_details = show_details_var.get()
             details = get_wifi_details(show_details)
             text_area.delete(1.0, tk.END)
