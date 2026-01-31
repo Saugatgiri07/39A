@@ -187,5 +187,9 @@ block_button.pack(pady=5)
 unblock_button = tk.Button(root, text="Unblock Internet Access", command=unblock_device)
 unblock_button.pack(pady=5)
 
+# Create refresh button
+refresh_button = tk.Button(root, text="Refresh System", command=fetch_details)
+refresh_button.pack(pady=5)
+
 if __name__ == "__main__":
     root.mainloop()
