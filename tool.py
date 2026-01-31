@@ -9,6 +9,8 @@ import ctypes
 import sys
 import os
 
+active_ips = []
+
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
@@ -73,6 +75,7 @@ def get_wifi_details(show_device_details=False):
 
         # Get connected devices by scanning the entire subnet with concurrent pings
         details += "Connected Devices (active devices on the network):\n"
+        global active_ips
         active_ips = []
 
         def ping_ip(ip):
@@ -158,6 +161,21 @@ def unblock_device():
     except subprocess.CalledProcessError as e:
         messagebox.showerror("Error", f"Failed to unblock {ip}: {e}")
 
+def block_all_devices():
+    if not is_admin():
+        messagebox.showerror("Error", "Administrator privileges are required to block/unblock internet access. Please run the application as administrator.")
+        return
+    if not active_ips:
+        messagebox.showerror("Error", "No connected devices found. Please scan the network first.")
+        return
+    try:
+        for ip in active_ips:
+            # Add firewall rule to block outbound traffic for each IP
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip], check=True)
+        messagebox.showinfo("Success", f"Internet access blocked for all connected devices ({len(active_ips)} devices).")
+    except subprocess.CalledProcessError as e:
+        messagebox.showerror("Error", f"Failed to block all devices: {e}")
+
 # Create the main window
 root = tk.Tk()
 root.title("WiFi Details Tool")
@@ -190,6 +208,10 @@ unblock_button.pack(pady=5)
 # Create refresh button
 refresh_button = tk.Button(root, text="Refresh System", command=fetch_details)
 refresh_button.pack(pady=5)
+
+# Create block all devices button
+block_all_button = tk.Button(root, text="Block All Internet Access", command=block_all_devices)
+block_all_button.pack(pady=5)
 
 if __name__ == "__main__":
     root.mainloop()
