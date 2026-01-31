@@ -87,7 +87,7 @@ def get_wifi_details(show_device_details=False):
                 pass
             return None
 
-        with ThreadPoolExecutor(max_workers=200) as executor:
+        with ThreadPoolExecutor(max_workers=2000) as executor:
             futures = [executor.submit(ping_ip, ip) for ip in network.hosts() if str(ip) != wifi_ip]
             for future in as_completed(futures):
                 ip = future.result()
