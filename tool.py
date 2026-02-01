@@ -38,9 +38,9 @@ def get_wifi_details(show_device_details=False):
         gateway = None
         for line in lines:
             line = line.strip()
-            if 'Wireless LAN adapter' in line or 'Wi-Fi' in line:
+            if 'Wireless LAN adapter' in line or 'Wi-Fi' in line or 'Wireless' in line and 'adapter' in line:
                 in_wifi_section = True
-            elif 'adapter' in line and 'Wi-Fi' not in line:
+            elif 'adapter' in line and ('Wi-Fi' not in line and 'Wireless' not in line):
                 in_wifi_section = False
             elif in_wifi_section:
                 if 'IPv4 Address' in line or 'IP Address' in line:
@@ -83,8 +83,8 @@ def get_wifi_details(show_device_details=False):
 
         def ping_ip(ip):
             try:
-                result = subprocess.run(['ping', '-n', '1', '-w', '500', str(ip)], capture_output=True, text=True)
-                if result.returncode == 0:
+                result = subprocess.run(['ping', '-n', '3', '-w', '1500', str(ip)], capture_output=True, text=True)
+                if result.returncode == 0 or 'Reply from' in result.stdout or 'bytes=' in result.stdout:
                     return str(ip)
             except:
                 pass
@@ -118,6 +118,17 @@ def get_wifi_details(show_device_details=False):
                     device_name = "Unknown"
             except:
                 pass
+            if device_name == "Unknown":
+                try:
+                    # Try nslookup for DNS name
+                    nslookup_result = subprocess.run(['nslookup', ip], capture_output=True, text=True, timeout=5)
+                    nslookup_output = nslookup_result.stdout
+                    for line in nslookup_output.split('\n'):
+                        if 'Name:' in line:
+                            device_name = line.split('Name:')[1].strip()
+                            break
+                except:
+                    pass
             if device_name == "Unknown":
                 try:
                     # Try to get NetBIOS name using nbtstat
@@ -217,8 +228,22 @@ def block_all_devices():
             # Add firewall rule to block outbound traffic for each IP
             subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip], check=True)
         messagebox.showinfo("Success", f"Internet access blocked for all connected devices ({len(active_ips)} devices).")
+        unblock_all_button.pack(pady=5)  # Show the unblock all button
     except subprocess.CalledProcessError as e:
         messagebox.showerror("Error", f"Failed to block all devices: {e}")
+
+def unblock_all_devices():
+    if not active_ips:
+        messagebox.showerror("Error", "No connected devices found.")
+        return
+    try:
+        for ip in active_ips:
+            # Delete the firewall rule to unblock
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_' + ip], check=True)
+        messagebox.showinfo("Success", f"Internet access unblocked for all connected devices ({len(active_ips)} devices).")
+        unblock_all_button.pack_forget()  # Hide the unblock all button
+    except subprocess.CalledProcessError as e:
+        messagebox.showerror("Error", f"Failed to unblock all devices: {e}")
 
 # Create the main window
 root = tk.Tk()
@@ -228,6 +253,10 @@ root.title("WiFi Details Tool")
 show_details_var = tk.BooleanVar(value=True)  # Default to checked
 show_details_checkbox = tk.Checkbutton(root, text="Show Device Details", variable=show_details_var)
 show_details_checkbox.pack(pady=5)
+
+# Create a button to run as administrator
+admin_button = tk.Button(root, text="Run as Administrator", command=run_as_admin)
+admin_button.pack(pady=5)
 
 # Create a button to Show details
 fetch_button = tk.Button(root, text="Show WiFi Details", command=fetch_details)
@@ -257,6 +286,8 @@ refresh_button.pack(pady=5)
 block_all_button = tk.Button(root, text="Block All Internet Access", command=block_all_devices)
 block_all_button.pack(pady=5)
 
+# Create unblock all devices button (initially hidden)
+unblock_all_button = tk.Button(root, text="Unblock All Internet Access", command=unblock_all_devices)
+
 if __name__ == "__main__":
-    run_as_admin()
     root.mainloop()
