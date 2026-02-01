@@ -35,6 +35,7 @@ def get_wifi_details(show_device_details=False):
         wifi_subnet = None
         in_wifi_section = False
 
+        gateway = None
         for line in lines:
             line = line.strip()
             if 'Wireless LAN adapter' in line or 'Wi-Fi' in line:
@@ -46,6 +47,8 @@ def get_wifi_details(show_device_details=False):
                     wifi_ip = line.split(':')[-1].strip()
                 elif 'Subnet Mask' in line:
                     wifi_subnet = line.split(':')[-1].strip()
+                elif 'Default Gateway' in line:
+                    gateway = line.split(':')[-1].strip()
 
         if not wifi_ip or not wifi_subnet:
             return "Could not find WiFi IP or subnet. Ensure you are connected to WiFi."
@@ -80,14 +83,14 @@ def get_wifi_details(show_device_details=False):
 
         def ping_ip(ip):
             try:
-                result = subprocess.run(['ping', '-n', '1', '-w', '100', str(ip)], capture_output=True, text=True)
+                result = subprocess.run(['ping', '-n', '1', '-w', '500', str(ip)], capture_output=True, text=True)
                 if result.returncode == 0:
                     return str(ip)
             except:
                 pass
             return None
 
-        with ThreadPoolExecutor(max_workers=2000) as executor:
+        with ThreadPoolExecutor(max_workers=100) as executor:
             futures = [executor.submit(ping_ip, ip) for ip in network.hosts() if str(ip) != wifi_ip]
             for future in as_completed(futures):
                 ip = future.result()
@@ -255,4 +258,5 @@ block_all_button = tk.Button(root, text="Block All Internet Access", command=blo
 block_all_button.pack(pady=5)
 
 if __name__ == "__main__":
+    run_as_admin()
     root.mainloop()
