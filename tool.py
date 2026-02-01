@@ -94,6 +94,8 @@ def get_wifi_details(show_device_details=False):
                 if ip:
                     active_ips.append(ip)
 
+        details += f"Total connected devices: {len(active_ips)}\n\n"
+
         # For each active IP, get MAC from ARP and device name concurrently
         def get_device_info(ip):
             arp_result = subprocess.run(['arp', '-a', ip], capture_output=True, text=True)
