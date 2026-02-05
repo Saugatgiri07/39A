@@ -8,8 +8,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import ctypes
 import sys
 import os
+import re
 
 active_ips = []
+block_all_used = False  # Flag to track if Block All was used
+
+def validate_ip(ip):
+    try:
+        ipaddress.IPv4Address(ip)
+        return True
+    except ipaddress.AddressValueError:
+        return False
 
 def is_admin():
     try:
@@ -21,6 +30,8 @@ def run_as_admin():
     if not is_admin():
         # Re-run the program with admin rights
         ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+        import time
+        time.sleep(1)
         sys.exit()
 
 def get_wifi_details(show_device_details=False):
@@ -29,29 +40,33 @@ def get_wifi_details(show_device_details=False):
         result = subprocess.run(['ipconfig'], capture_output=True, text=True, shell=True)
         output = result.stdout
 
-        # Find WiFi adapter (assuming it's named "Wireless LAN adapter Wi-Fi" or similar)
+        # Find WiFi adapter section
         lines = output.split('\n')
         wifi_ip = None
         wifi_subnet = None
         in_wifi_section = False
 
-        gateway = None
         for line in lines:
             line = line.strip()
-            if 'Wireless LAN adapter' in line or 'Wi-Fi' in line or 'Wireless' in line and 'adapter' in line:
+            if re.search(r'Wireless LAN adapter|Wi-Fi|Wireless.*adapter', line, re.IGNORECASE):
                 in_wifi_section = True
-            elif 'adapter' in line and ('Wi-Fi' not in line and 'Wireless' not in line):
+            elif re.search(r'adapter', line, re.IGNORECASE) and not re.search(r'Wi-Fi|Wireless', line, re.IGNORECASE):
                 in_wifi_section = False
             elif in_wifi_section:
-                if 'IPv4 Address' in line or 'IP Address' in line:
-                    wifi_ip = line.split(':')[-1].strip()
-                elif 'Subnet Mask' in line:
-                    wifi_subnet = line.split(':')[-1].strip()
-                elif 'Default Gateway' in line:
-                    gateway = line.split(':')[-1].strip()
+                if re.search(r'IPv4 Address|IP Address', line, re.IGNORECASE):
+                    ip_match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                    if ip_match:
+                        wifi_ip = ip_match.group(1)
+                elif re.search(r'Subnet Mask', line, re.IGNORECASE):
+                    subnet_match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                    if subnet_match:
+                        wifi_subnet = subnet_match.group(1)
 
         if not wifi_ip or not wifi_subnet:
-            return "Could not find WiFi IP or subnet. Ensure you are connected to WiFi."
+            # Debug: show what we found
+            debug_info = f"Debug: wifi_ip={wifi_ip}, wifi_subnet={wifi_subnet}\n"
+            debug_info += "Full ipconfig output:\n" + output
+            return f"Could not find WiFi IP or subnet. Ensure you are connected to WiFi.\n\n{debug_info}"
 
         # Calculate network prefix from subnet mask
         subnet_mask = ipaddress.IPv4Address(wifi_subnet)
@@ -76,22 +91,30 @@ def get_wifi_details(show_device_details=False):
 
         details += f"Connected Wi-Fi Name (SSID): {ssid}\n\n"
 
-        # Get connected devices by scanning the entire subnet with concurrent pings
+        # Get connected devices by scanning the subnet more efficiently
         details += "Connected Devices (active devices on the network):\n"
         global active_ips
         active_ips = []
 
         def ping_ip(ip):
             try:
-                result = subprocess.run(['ping', '-n', '1', '-w', '500', str(ip)], capture_output=True, text=True)
+                # Use faster ping with shorter timeout
+                result = subprocess.run(['ping', '-n', '1', '-w', '200', str(ip)], capture_output=True, text=True)
                 if 'Reply from' in result.stdout:
                     return str(ip)
             except:
                 pass
             return None
 
-        with ThreadPoolExecutor(max_workers=100) as executor:
-            futures = [executor.submit(ping_ip, ip) for ip in network.hosts() if str(ip) != wifi_ip]
+        # Limit scanning to a reasonable range around the local IP
+        base_ip = ipaddress.IPv4Address(wifi_ip)
+        start_ip = max(ipaddress.IPv4Address(network.network_address) + 1, base_ip - 10)
+        end_ip = min(ipaddress.IPv4Address(network.broadcast_address) - 1, base_ip + 50)
+
+        scan_ips = [ip for ip in network.hosts() if start_ip <= ip <= end_ip and str(ip) != wifi_ip]
+
+        with ThreadPoolExecutor(max_workers=50) as executor:  # Reduced workers for better performance
+            futures = [executor.submit(ping_ip, ip) for ip in scan_ips]
             for future in as_completed(futures):
                 ip = future.result()
                 if ip:
@@ -174,9 +197,21 @@ def get_wifi_details(show_device_details=False):
     except Exception as e:
         return f"Error: {e}"
 
+def clear_details():
+    text_area.delete(1.0, tk.END)
+
 def fetch_details():
     def run_in_thread():
         try:
+            # Disable buttons during scanning
+            fetch_button.config(state=tk.DISABLED)
+            refresh_button.config(state=tk.DISABLED)
+            block_button.config(state=tk.DISABLED)
+            unblock_button.config(state=tk.DISABLED)
+            block_all_button.config(state=tk.DISABLED)
+            if block_all_used:
+                unblock_all_button.config(state=tk.DISABLED)
+
             text_area.delete(1.0, tk.END)
             text_area.insert(tk.END, "Scanning network... Please wait.\n")
             root.update_idletasks()  # Make GUI responsive
@@ -187,6 +222,15 @@ def fetch_details():
         except Exception as e:
             text_area.delete(1.0, tk.END)
             text_area.insert(tk.END, f"Error fetching details: {e}")
+        finally:
+            # Re-enable buttons
+            fetch_button.config(state=tk.NORMAL)
+            refresh_button.config(state=tk.NORMAL)
+            block_button.config(state=tk.NORMAL)
+            unblock_button.config(state=tk.NORMAL)
+            block_all_button.config(state=tk.NORMAL)
+            if block_all_used:
+                unblock_all_button.config(state=tk.NORMAL)
     threading.Thread(target=run_in_thread, daemon=True).start()
 
 def block_device():
@@ -197,10 +241,16 @@ def block_device():
     if not ip:
         messagebox.showerror("Error", "Please enter an IP address.")
         return
+    if not validate_ip(ip):
+        messagebox.showerror("Error", "Invalid IP address format.")
+        return
     try:
         # Add firewall rules to block all inbound and outbound traffic for the IP
+        # Use 'localip' for outbound and 'remoteip' for inbound to properly block internet access
         subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_Out_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
-        subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + ip, 'dir=in', 'action=block', 'localip=' + ip, 'protocol=any'], check=True, shell=True)
+        # Also block any traffic to/from this IP
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_All_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
         messagebox.showinfo("Success", f"Internet access blocked for {ip}.")
     except subprocess.CalledProcessError as e:
         messagebox.showerror("Error", f"Failed to block {ip}: {e}")
@@ -210,10 +260,14 @@ def unblock_device():
     if not ip:
         messagebox.showerror("Error", "Please enter an IP address.")
         return
+    if not validate_ip(ip):
+        messagebox.showerror("Error", "Invalid IP address format.")
+        return
     try:
         # Delete the firewall rules to unblock
-        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_Out_' + ip], check=True)
-        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_In_' + ip], check=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_Out_' + ip], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_In_' + ip], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_All_' + ip], check=True, shell=True)
         messagebox.showinfo("Success", f"Internet access unblocked for {ip}.")
     except subprocess.CalledProcessError as e:
         messagebox.showerror("Error", f"Failed to unblock {ip}: {e}")
@@ -230,6 +284,8 @@ def block_all_devices():
             # Add firewall rules to block both inbound and outbound traffic for each IP
             subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_Out_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip], check=True, shell=True)
             subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip], check=True, shell=True)
+        global block_all_used
+        block_all_used = True
         messagebox.showinfo("Success", f"Internet access blocked for all connected devices ({len(active_ips)} devices).")
         unblock_all_button.pack(pady=5)  # Show the unblock all button
     except subprocess.CalledProcessError as e:
@@ -252,6 +308,8 @@ def unblock_all_devices():
 # Create the main window
 root = tk.Tk()
 root.title("WiFi Details Tool")
+root.attributes("-topmost", True)
+root.update()
 
 # Create a checkbox for showing device details
 show_details_var = tk.BooleanVar(value=True)  # Default to checked
@@ -270,6 +328,10 @@ fetch_button.pack(pady=10)
 text_area = scrolledtext.ScrolledText(root, width=80, height=20)
 text_area.pack(pady=10)
 
+# Create clear details button
+clear_button = tk.Button(root, text="Clear Details", command=clear_details)
+clear_button.pack(pady=5)
+
 # Create entry for IP address
 ip_label = tk.Label(root, text="Enter IP Address to Block/Unblock:")
 ip_label.pack(pady=5)
@@ -283,7 +345,7 @@ unblock_button = tk.Button(root, text="Unblock Internet Access", command=unblock
 unblock_button.pack(pady=5)
 
 # Create refresh button
-refresh_button = tk.Button(root, text="Refresh System", command=fetch_details)
+refresh_button = tk.Button(root, text="Refresh Details", command=fetch_details)
 refresh_button.pack(pady=5)
 
 # Create block all devices button
