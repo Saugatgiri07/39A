@@ -294,4 +294,5 @@ block_all_button.pack(pady=5)
 unblock_all_button = tk.Button(root, text="Unblock All Internet Access", command=unblock_all_devices)
 
 if __name__ == "__main__":
+    run_as_admin()
     root.mainloop()
