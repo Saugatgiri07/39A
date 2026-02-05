@@ -83,8 +83,8 @@ def get_wifi_details(show_device_details=False):
 
         def ping_ip(ip):
             try:
-                result = subprocess.run(['ping', '-n', '3', '-w', '1500', str(ip)], capture_output=True, text=True)
-                if result.returncode == 0 or 'Reply from' in result.stdout or 'bytes=' in result.stdout:
+                result = subprocess.run(['ping', '-n', '1', '-w', '500', str(ip)], capture_output=True, text=True)
+                if 'Reply from' in result.stdout:
                     return str(ip)
             except:
                 pass
@@ -198,8 +198,9 @@ def block_device():
         messagebox.showerror("Error", "Please enter an IP address.")
         return
     try:
-        # Add firewall rule to block outbound traffic for the IP
-        subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip], check=True)
+        # Add firewall rules to block all inbound and outbound traffic for the IP
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_Out_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
         messagebox.showinfo("Success", f"Internet access blocked for {ip}.")
     except subprocess.CalledProcessError as e:
         messagebox.showerror("Error", f"Failed to block {ip}: {e}")
@@ -210,8 +211,9 @@ def unblock_device():
         messagebox.showerror("Error", "Please enter an IP address.")
         return
     try:
-        # Delete the firewall rule to unblock
-        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_' + ip], check=True)
+        # Delete the firewall rules to unblock
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_Out_' + ip], check=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_In_' + ip], check=True)
         messagebox.showinfo("Success", f"Internet access unblocked for {ip}.")
     except subprocess.CalledProcessError as e:
         messagebox.showerror("Error", f"Failed to unblock {ip}: {e}")
@@ -225,8 +227,9 @@ def block_all_devices():
         return
     try:
         for ip in active_ips:
-            # Add firewall rule to block outbound traffic for each IP
-            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip], check=True)
+            # Add firewall rules to block both inbound and outbound traffic for each IP
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_Out_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip], check=True, shell=True)
         messagebox.showinfo("Success", f"Internet access blocked for all connected devices ({len(active_ips)} devices).")
         unblock_all_button.pack(pady=5)  # Show the unblock all button
     except subprocess.CalledProcessError as e:
@@ -238,8 +241,9 @@ def unblock_all_devices():
         return
     try:
         for ip in active_ips:
-            # Delete the firewall rule to unblock
-            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_' + ip], check=True)
+            # Delete the firewall rules to unblock
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_Out_' + ip], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_In_' + ip], check=True, shell=True)
         messagebox.showinfo("Success", f"Internet access unblocked for all connected devices ({len(active_ips)} devices).")
         unblock_all_button.pack_forget()  # Hide the unblock all button
     except subprocess.CalledProcessError as e:
