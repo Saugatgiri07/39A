@@ -235,7 +235,7 @@ def fetch_details():
 
 def block_device():
     if not is_admin():
-        messagebox.showerror("Error", "Administrator privileges are required to block/unblock internet access. Please run the application as administrator.")
+        messagebox.showerror("Error", "Administrator privileges are required to block/unblock communication. Please run the application as administrator.")
         return
     ip = ip_entry.get().strip()
     if not ip:
@@ -245,13 +245,10 @@ def block_device():
         messagebox.showerror("Error", "Invalid IP address format.")
         return
     try:
-        # Add firewall rules to block all inbound and outbound traffic for the IP
-        # Use 'localip' for outbound and 'remoteip' for inbound to properly block internet access
+        # Add firewall rules to block all inbound and outbound traffic to/from the IP
         subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_Out_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
-        subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + ip, 'dir=in', 'action=block', 'localip=' + ip, 'protocol=any'], check=True, shell=True)
-        # Also block any traffic to/from this IP
-        subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_All_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
-        messagebox.showinfo("Success", f"Internet access blocked for {ip}.")
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
+        messagebox.showinfo("Success", f"Communication blocked with {ip}.")
     except subprocess.CalledProcessError as e:
         messagebox.showerror("Error", f"Failed to block {ip}: {e}")
 
@@ -356,5 +353,4 @@ block_all_button.pack(pady=5)
 unblock_all_button = tk.Button(root, text="Unblock All Internet Access", command=unblock_all_devices)
 
 if __name__ == "__main__":
-    run_as_admin()
     root.mainloop()
