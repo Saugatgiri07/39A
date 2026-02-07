@@ -303,11 +303,20 @@ def unblock_device_auto(ip):
     try:
         subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_Out_' + ip], check=True, shell=True)
         subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_In_' + ip], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_TCP_' + ip], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_UDP_' + ip], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_TCP_In_' + ip], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_UDP_In_' + ip], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_ICMP_Out_' + ip], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_ICMP_In_' + ip], check=True, shell=True)
         logging.info(f"Auto-unblocked IP: {ip}")
     except subprocess.CalledProcessError as e:
         logging.error(f"Failed to auto-unblock {ip}: {e}")
 
 def unblock_device():
+    if not is_admin():
+        messagebox.showerror("Error", "Administrator privileges are required to block/unblock communication. Please run the application as administrator.")
+        return
     ip = ip_entry.get().strip()
     if not ip:
         messagebox.showerror("Error", "Please enter an IP address.")
@@ -319,8 +328,10 @@ def unblock_device():
         # Delete the firewall rules to unblock
         subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_Out_' + ip], check=True, shell=True)
         subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_In_' + ip], check=True, shell=True)
-        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_All_' + ip], check=True, shell=True)
-        # Also delete ICMP rules
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_TCP_' + ip], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_UDP_' + ip], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_TCP_In_' + ip], check=True, shell=True)
+        subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_UDP_In_' + ip], check=True, shell=True)
         subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_ICMP_Out_' + ip], check=True, shell=True)
         subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_ICMP_In_' + ip], check=True, shell=True)
         logging.info(f"Unblocked IP: {ip}")
@@ -338,15 +349,28 @@ def block_all_devices():
         return
     try:
         for ip in active_ips:
-            # Add firewall rules to block both inbound and outbound traffic for each IP
-            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_Out_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip], check=True, shell=True)
-            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip], check=True, shell=True)
+            # Force block: delete any existing rules first
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_Out_' + ip], capture_output=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_In_' + ip], capture_output=True, shell=True)
+            # Add firewall rules to block all inbound and outbound traffic to/from the IP
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_Out_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
+            # Also block specific protocols for thoroughness
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_TCP_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=TCP'], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_UDP_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=UDP'], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_TCP_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip, 'protocol=TCP'], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_UDP_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip, 'protocol=UDP'], check=True, shell=True)
+            # Add ICMP blocking for more thorough blocking
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_ICMP_Out_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=icmpv4'], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_ICMP_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip, 'protocol=icmpv4'], check=True, shell=True)
+            logging.info(f"Blocked IP: {ip}")
         global block_all_used
         block_all_used = True
         messagebox.showinfo("Success", f"Internet access blocked for all connected devices ({len(active_ips)} devices).")
         unblock_all_button.pack(pady=5)  # Show the unblock all button
     except subprocess.CalledProcessError as e:
         messagebox.showerror("Error", f"Failed to block all devices: {e}")
+        logging.error(f"Failed to block all devices: {e}")
 
 def unblock_all_devices():
     if not active_ips:
@@ -357,6 +381,12 @@ def unblock_all_devices():
             # Delete the firewall rules to unblock
             subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_Out_' + ip], check=True, shell=True)
             subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_In_' + ip], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_TCP_' + ip], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_UDP_' + ip], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_TCP_In_' + ip], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_UDP_In_' + ip], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_ICMP_Out_' + ip], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_ICMP_In_' + ip], check=True, shell=True)
         messagebox.showinfo("Success", f"Internet access unblocked for all connected devices ({len(active_ips)} devices).")
         unblock_all_button.pack_forget()  # Hide the unblock all button
     except subprocess.CalledProcessError as e:
@@ -423,9 +453,20 @@ if __name__ == "__main__":
             print("Invalid IP address.")
             sys.exit(1)
         try:
-            # Simplified block for CLI
-            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_Out_' + args.block, 'dir=out', 'action=block', 'remoteip=' + args.block], check=True, shell=True)
-            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + args.block, 'dir=in', 'action=block', 'remoteip=' + args.block], check=True, shell=True)
+            # Force block: delete any existing rules first
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_Out_' + args.block], capture_output=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_In_' + args.block], capture_output=True, shell=True)
+            # Add firewall rules to block all inbound and outbound traffic to/from the IP
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_Out_' + args.block, 'dir=out', 'action=block', 'remoteip=' + args.block, 'protocol=any'], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + args.block, 'dir=in', 'action=block', 'remoteip=' + args.block, 'protocol=any'], check=True, shell=True)
+            # Also block specific protocols for thoroughness
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_TCP_' + args.block, 'dir=out', 'action=block', 'remoteip=' + args.block, 'protocol=TCP'], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_UDP_' + args.block, 'dir=out', 'action=block', 'remoteip=' + args.block, 'protocol=UDP'], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_TCP_In_' + args.block, 'dir=in', 'action=block', 'remoteip=' + args.block, 'protocol=TCP'], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_UDP_In_' + args.block, 'dir=in', 'action=block', 'remoteip=' + args.block, 'protocol=UDP'], check=True, shell=True)
+            # Add ICMP blocking for more thorough blocking
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_ICMP_Out_' + args.block, 'dir=out', 'action=block', 'remoteip=' + args.block, 'protocol=icmpv4'], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_ICMP_In_' + args.block, 'dir=in', 'action=block', 'remoteip=' + args.block, 'protocol=icmpv4'], check=True, shell=True)
             print(f"Blocked {args.block}")
         except subprocess.CalledProcessError as e:
             print(f"Failed to block {args.block}: {e}")
@@ -439,8 +480,15 @@ if __name__ == "__main__":
             print("Invalid IP address.")
             sys.exit(1)
         try:
+            # Delete the firewall rules to unblock
             subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_Out_' + args.unblock], check=True, shell=True)
             subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_In_' + args.unblock], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_TCP_' + args.unblock], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_UDP_' + args.unblock], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_TCP_In_' + args.unblock], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_UDP_In_' + args.unblock], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_ICMP_Out_' + args.unblock], check=True, shell=True)
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_ICMP_In_' + args.unblock], check=True, shell=True)
             print(f"Unblocked {args.unblock}")
         except subprocess.CalledProcessError as e:
             print(f"Failed to unblock {args.unblock}: {e}")
@@ -457,8 +505,14 @@ if __name__ == "__main__":
             sys.exit(1)
         try:
             for ip in active_ips:
-                subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_Out_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip], check=True, shell=True)
-                subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_Out_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip, 'protocol=any'], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_TCP_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=TCP'], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_UDP_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=UDP'], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_TCP_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip, 'protocol=TCP'], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_UDP_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip, 'protocol=UDP'], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_ICMP_Out_' + ip, 'dir=out', 'action=block', 'remoteip=' + ip, 'protocol=icmpv4'], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=Block_ICMP_In_' + ip, 'dir=in', 'action=block', 'remoteip=' + ip, 'protocol=icmpv4'], check=True, shell=True)
             print(f"Blocked all {len(active_ips)} devices")
         except subprocess.CalledProcessError as e:
             print(f"Failed to block all: {e}")
@@ -477,6 +531,12 @@ if __name__ == "__main__":
             for ip in active_ips:
                 subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_Out_' + ip], check=True, shell=True)
                 subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_In_' + ip], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_TCP_' + ip], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_UDP_' + ip], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_TCP_In_' + ip], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_UDP_In_' + ip], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_ICMP_Out_' + ip], check=True, shell=True)
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=Block_ICMP_In_' + ip], check=True, shell=True)
             print(f"Unblocked all {len(active_ips)} devices")
         except subprocess.CalledProcessError as e:
             print(f"Failed to unblock all: {e}")
@@ -489,7 +549,7 @@ if __name__ == "__main__":
 
     # Create the main window
     root = tk.Tk()
-    root.title("Network Jammer")
+    root.title("Wireless Network Aduitor")
     # root.attributes("-topmost", True)  # Temporarily comment out for testing
     root.configure(bg='#f0f0f0')
     root.update()
@@ -505,16 +565,12 @@ if __name__ == "__main__":
     admin_button.pack(pady=5)
 
     # Create a button to Show details
-    fetch_button = tk.Button(root, text="Scan Network", command=fetch_details, bg='#2196F3', fg='white')
+    fetch_button = tk.Button(root, text="Show Wi-Fi Details", command=fetch_details, bg='#2196F3', fg='white')
     fetch_button.pack(pady=10)
 
     # Create a scrolled text area to display the details
     text_area = scrolledtext.ScrolledText(root, width=80, height=20, bg='#ffffff', fg='#000000')
     text_area.pack(pady=10)
-
-    # Create clear details button
-    clear_button = tk.Button(root, text="Clear Details", command=clear_details, bg='#FF9800', fg='white')
-    clear_button.pack(pady=5)
 
     # Create entry for IP address
     ip_label = tk.Label(root, text="Enter IP Address to Block/Unblock:", bg='#f0f0f0')
