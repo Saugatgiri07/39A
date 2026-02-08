@@ -542,14 +542,23 @@ if __name__ == "__main__":
             print(f"Failed to unblock all: {e}")
         sys.exit()
 
-    # GUI mode - admin check is handled in blocking functions for better usability
+    # GUI mode - ensure running as administrator
+    if not is_admin():
+        messagebox.showinfo("Administrator Required", "This application requires administrator privileges to function properly. You will be prompted to run as administrator.")
+        # Get the absolute path of the script and properly quote it
+        script_path = os.path.abspath(sys.argv[0])
+        script_path = '"{}"'.format(script_path)
+        args = " ".join(sys.argv[1:])
+        lpParameters = "{} {}".format(script_path, args) if args else script_path
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, lpParameters, None, 1)
+        sys.exit()
 
     # GUI mode
     print("Starting Network Jammer GUI...")
 
     # Create the main window
     root = tk.Tk()
-    root.title("Wireless Network Aduitor")
+    root.title("Wireless Network Auditor")
     # root.attributes("-topmost", True)  # Temporarily comment out for testing
     root.configure(bg='#f0f0f0')
     root.update()
@@ -559,10 +568,6 @@ if __name__ == "__main__":
     show_details_var = tk.BooleanVar(value=True)  # Default to checked
     show_details_checkbox = tk.Checkbutton(root, text="Show Device Details", variable=show_details_var, bg='#f0f0f0')
     show_details_checkbox.pack(pady=5)
-
-    # Create a button to run as administrator
-    admin_button = tk.Button(root, text="Run as Administrator", command=run_as_admin, bg='#4CAF50', fg='white')
-    admin_button.pack(pady=5)
 
     # Create a button to Show details
     fetch_button = tk.Button(root, text="Show Wi-Fi Details", command=fetch_details, bg='#2196F3', fg='white')
